@@ -166,7 +166,7 @@ pre { background: #0d1117; padding: 10px; border-radius: 6px; overflow-x: auto; 
     </div>
     <div class="footer">
         V-7 AI can make mistakes. Please verify important information.<br>
-        &copy; 2026 Vishvdeep. All Rights Reserved.
+        &copy; 2026 VP. All Rights Reserved.
     </div>
 
 <script>
@@ -174,8 +174,8 @@ let chat = document.getElementById("chat-container");
 let input = document.getElementById("input");
 let controller = null;
 let lastInput = "";
-let typingInterval = null;
 
+// Auto-resize textarea
 input.addEventListener("input", () => {
     input.style.height = "auto";
     input.style.height = input.scrollHeight + "px";
@@ -196,49 +196,61 @@ function msg(role, text) {
     return b;
 }
 
+/* STREAMING SEND FUNCTION */
 async function send() {
     let text = input.value.trim();
     if (!text) return;
     lastInput = text;
+
+    // Show User Message
     msg("user", text);
     input.value = "";
     input.style.height = "auto";
+
+    // Show AI "Thinking" Bubble
     let aiBubble = msg("ai", '<span class="thinking">V-7 AI is thinking<span class="dots"></span></span>');
+    
     controller = new AbortController();
+
     try {
-        let res = await fetch("/chat", {
+        const response = await fetch("/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: text }),
             signal: controller.signal
         });
-        let data = await res.json();
-        simulateTyping(aiBubble, data.response);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+        
+        // Clear "thinking" as soon as stream starts
+        aiBubble.innerHTML = ""; 
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            let chunk = decoder.decode(value, { stream: true });
+            fullText += chunk;
+
+            // Render Markdown and highlight code
+            aiBubble.innerHTML = marked.parse(fullText);
+            highlight(); 
+            
+            chat.scrollTop = chat.scrollHeight;
+        }
+        
     } catch (e) {
-        if (e.name === 'AbortError') aiBubble.innerHTML = "<i>Stopped.</i>";
-        else aiBubble.innerHTML = "Error connecting to server.";
+        if (e.name === 'AbortError') {
+            aiBubble.innerHTML = "<i>Stopped.</i>";
+        } else {
+            aiBubble.innerHTML = "Error: " + e.message;
+        }
     }
 }
 
-function simulateTyping(element, text) {
-    let i = 0;
-    element.innerHTML = "";
-    clearInterval(typingInterval);
-    typingInterval = setInterval(() => {
-        if (i < text.length) {
-            let currentText = text.substring(0, i + 1);
-            element.innerHTML = marked.parse(currentText);
-            if (currentText.includes("```")) highlight();
-            i++;
-            chat.scrollTop = chat.scrollHeight;
-        } else {
-            clearInterval(typingInterval);
-            highlight();
-        }
-    }, 15);
-}
-
-function stop() { if (controller) controller.abort(); clearInterval(typingInterval); }
+function stop() { if (controller) controller.abort(); }
 function regen() { if (lastInput) { input.value = lastInput; send(); } }
 
 function highlight() {
@@ -258,6 +270,7 @@ function highlight() {
     });
 }
 
+// Enter key support
 input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
