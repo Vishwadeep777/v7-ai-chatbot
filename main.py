@@ -1,15 +1,15 @@
 from fastapi import FastAPI, HTTPException, Request, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import os
 import requests
 import json
-import httpx
 import time
+import replicate
 
 app = FastAPI()
 
 # ================= RATE LIMITER =================
-# This dictionary remembers IP addresses and the times they sent messages
+# remembers IP addresses and the times they sent messages
 RATE_LIMIT_STORE = {}
 MAX_REQUESTS_PER_MINUTE = 5
 
@@ -17,99 +17,80 @@ def check_rate_limit(request: Request):
     client_ip = request.client.host
     current_time = time.time()
 
-    # If this is a new IP, create a list for them
     if client_ip not in RATE_LIMIT_STORE:
         RATE_LIMIT_STORE[client_ip] = []
 
-    # Clean up old requests (remove timestamps older than 60 seconds)
+    # Clean up old requests (older than 60 seconds)
     RATE_LIMIT_STORE[client_ip] = [t for t in RATE_LIMIT_STORE[client_ip] if current_time - t < 60]
 
-    # If they have 5 or more requests in the last 60 seconds, block them!
     if len(RATE_LIMIT_STORE[client_ip]) >= MAX_REQUESTS_PER_MINUTE:
-        raise HTTPException(status_code=429, detail="Too many requests. Please wait a minute before sending another message.")
+        raise HTTPException(
+            status_code=429, 
+            detail="Too many requests. Please wait a minute before sending another message."
+        )
 
-    # Otherwise, record this new request time
     RATE_LIMIT_STORE[client_ip].append(current_time)
 
 
 # ================= ROUTES =================
+
 @app.get("/")
 def read_root():
     return FileResponse("index.html")
 
-# Notice we added 'request: Request' and 'Depends(check_rate_limit)' here!
+
 @app.post("/chat", dependencies=[Depends(check_rate_limit)])
-def chat(data: dict, request: Request):
-    try:
-        user_message = data.get("message", "")
+async def chat(data: dict, request: Request):
+    user_message = data.get("message", "").strip()
 
-        if not user_message.strip():
-            raise HTTPException(status_code=400, detail="Empty message")
+    if not user_message:
+        raise HTTPException(status_code=400, detail="Empty message")
 
-        api_token = os.environ.get("REPLICATE_API_TOKEN")
+    api_token = os.environ.get("REPLICATE_API_TOKEN")
 
-        # ===== LOCAL OLLAMA =====
-        if not api_token:
+    # ===== CASE 1: REPLICATE STREAMING (ONLINE) =====
+    if api_token:
+        def stream_replicate():
             try:
-                response = requests.post(
-                    "http://localhost:11434/api/generate",
-                    json={
-                        "model": "llama3",
-                        "prompt": user_message
-                    },
-                    timeout=60
-                )
-
-                full_response = ""
-
-                for line in response.text.split('\n'):
-                    if line.strip():
-                        try:
-                            data_obj = json.loads(line)
-                            if 'response' in data_obj:
-                                full_response += data_obj['response']
-                        except:
-                            pass
-
-                return {"response": full_response}
-
-            except:
-                return {"response": "❌ Ollama not running. Start with: ollama serve"}
-
-        # ===== REPLICATE =====
-        else:
-            try:
-                with httpx.Client(timeout=60) as client:
-                    res = client.post(
-                        "https://api.replicate.com/v1/predictions",
-                        headers={"Authorization": f"Token {api_token}"},
-                        json={
-                            "version": "e5582ad7d6418d0df7bb5ab665f46d7c23b39553f46a937e4189b531175ef652",
-                            "input": {"prompt": user_message}
-                        }
-                    )
-
-                    pred_id = res.json().get("id")
-
-                    for _ in range(60):
-                        result = client.get(
-                            f"https://api.replicate.com/v1/predictions/{pred_id}",
-                            headers={"Authorization": f"Token {api_token}"}
-                        ).json()
-
-                        if result["status"] == "succeeded":
-                            output = result.get("output", [])
-                            return {"response": "".join(output)}
-
-                        time.sleep(1)
-
-                return {"response": "Timeout error"}
-
+                # Using the official SDK for real-time word-by-word delivery
+                for event in replicate.stream(
+                    "meta/meta-llama-3-8b-instruct",
+                    input={
+                        "prompt": user_message,
+                        "prompt_template": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are V-7 AI, a helpful assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+                    }
+                ):
+                    yield str(event)
             except Exception as e:
-                return {"response": str(e)}
+                yield f"Error connecting to Replicate: {str(e)}"
 
-    except HTTPException as he:
-        # If the rate limiter blocks them, send that exact error to the frontend
-        return {"response": he.detail}
-    except Exception as e:
-        return {"response": str(e)}
+        return StreamingResponse(stream_replicate(), media_type="text/plain")
+
+    # ===== CASE 2: LOCAL OLLAMA (OFFLINE FALLBACK) =====
+    else:
+        try:
+            # Note: Streaming with requests/ollama locally is done differently, 
+            # so for this fallback we return the full string at once.
+            response = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": "llama3",
+                    "prompt": user_message,
+                    "stream": False
+                },
+                timeout=60
+            )
+            
+            data_obj = response.json()
+            full_text = data_obj.get("response", "No response from local AI.")
+            
+            # We wrap this in a generator so the frontend can still use its "while" loop
+            def stream_local():
+                yield full_text
+                
+            return StreamingResponse(stream_local(), media_type="text/plain")
+
+        except Exception as e:
+            def stream_error():
+                yield "❌ Ollama not running and no API Token found. Run: `ollama serve`"
+            return StreamingResponse(stream_error(), media_type="text/plain")
