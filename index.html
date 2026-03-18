@@ -42,6 +42,20 @@
         .header-title {
             font-size: 1.2rem;
             font-weight: 700;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Status Dot Styling */
+        #status-dot {
+            height: 8px;
+            width: 8px;
+            background-color: #19c37d;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 10px;
+            box-shadow: 0 0 8px #19c37d;
+            transition: 0.3s ease;
         }
 
         .header-right {
@@ -196,6 +210,7 @@
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
+            transition: opacity 0.3s ease;
         }
 
         .stop-btn { background: #cf4242 !important; }
@@ -209,7 +224,7 @@
             border-top: 1px solid #4d4d4f;
         }
 
-        /* --- Tools --- */
+        /* --- Utilities --- */
         .thinking { color: #acacbe; font-style: italic; }
         .dots::after { content: ""; animation: dots 1.5s infinite; }
         @keyframes dots { 0% {content: "";} 33% {content: ".";} 66% {content: "..";} 100% {content: "...";} }
@@ -233,7 +248,10 @@
 
     <div class="main">
         <div class="header">
-            <div class="header-title">🤖 V-7 AI</div>
+            <div class="header-title">
+                🤖 V-7 AI
+                <span id="status-dot" title="System Status: Online"></span>
+            </div>
             <div class="header-right">
                 <select id="persona-select">
                     <option value="general">🤖 General AI</option>
@@ -263,7 +281,7 @@
             <div class="input-wrapper">
                 <textarea id="input" placeholder="Ask anything to V-7 AI..." rows="1"></textarea>
                 <div class="controls">
-                    <button class="action-btn" onclick="send()">Send</button>
+                    <button id="send-btn" class="action-btn" onclick="send()">Send</button>
                     <button class="action-btn stop-btn" onclick="stop()">Stop</button>
                     <button class="action-btn" style="background:#565869" onclick="clearChat()">Clear</button>
                 </div>
@@ -272,7 +290,7 @@
     </div>
 
     <div class="footer">
-        V-7 AI is powered by Gemini 2.0 Flash. &copy; 2026 Vishvdeep Pundge.
+        V-7 AI is powered by Gemini 2.0 Flash. &copy; 2026 Vishvdeep.
     </div>
 
 <script>
@@ -280,6 +298,8 @@
     const input = document.getElementById("input");
     const quotaBar = document.getElementById("quota-bar");
     const quotaText = document.getElementById("quota-text");
+    const statusDot = document.getElementById("status-dot");
+    const sendBtn = document.getElementById("send-btn");
     
     let controller = null;
     let lastInput = "";
@@ -288,14 +308,38 @@
     const MAX_REQUESTS = 5;
     let requestsLeft = MAX_REQUESTS;
 
+    function setStatus(isAvailable) {
+        if (isAvailable) {
+            statusDot.style.backgroundColor = "#19c37d";
+            statusDot.style.boxShadow = "0 0 8px #19c37d";
+            statusDot.title = "System Status: Online";
+            sendBtn.disabled = false;
+            sendBtn.style.opacity = "1";
+        } else {
+            statusDot.style.backgroundColor = "#cf4242";
+            statusDot.style.boxShadow = "0 0 8px #cf4242";
+            statusDot.title = "System Status: Busy (Rate Limit)";
+            sendBtn.disabled = true;
+            sendBtn.style.opacity = "0.5";
+            
+            // Auto-recovery after 30 seconds
+            setTimeout(() => setStatus(true), 30000);
+        }
+    }
+
     function updateQuotaUI() {
         const percentage = (requestsLeft / MAX_REQUESTS) * 100;
         quotaBar.style.width = percentage + "%";
         quotaText.innerText = `${requestsLeft} / ${MAX_REQUESTS} Requests Left`;
         
-        if (requestsLeft <= 1) quotaBar.style.background = "#cf4242";
-        else if (requestsLeft <= 3) quotaBar.style.background = "#f1c40f";
-        else quotaBar.style.background = "#19c37d";
+        if (requestsLeft <= 0) {
+            quotaBar.style.background = "#cf4242";
+            setStatus(false); // Trigger Red Dot if bar hits zero
+        } else if (requestsLeft <= 2) {
+            quotaBar.style.background = "#f1c40f";
+        } else {
+            quotaBar.style.background = "#19c37d";
+        }
     }
 
     input.addEventListener("input", () => {
@@ -321,6 +365,7 @@
     async function send() {
         if (requestsLeft <= 0) {
             msg("ai", "⚠️ Rate limit reached. Please wait a minute for the quota to refill.");
+            setStatus(false);
             return;
         }
 
@@ -334,13 +379,14 @@
         input.value = "";
         input.style.height = "auto";
 
-        // Update Quota
+        // Update Quota simulation
         requestsLeft--;
         updateQuotaUI();
         setTimeout(() => { 
             if(requestsLeft < MAX_REQUESTS) {
                 requestsLeft++; 
                 updateQuotaUI();
+                if(requestsLeft > 0) setStatus(true);
             }
         }, 60000);
 
@@ -355,6 +401,12 @@
                 signal: controller.signal
             });
 
+            // Handle server-side 429 explicitly
+            if (response.status === 429) {
+                setStatus(false);
+                throw new Error("Rate limit exceeded on server.");
+            }
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let fullText = "";
@@ -363,13 +415,25 @@
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                fullText += decoder.decode(value, { stream: true });
+                let chunk = decoder.decode(value, { stream: true });
+                
+                // Detection for our custom "Busy" message from main.py
+                if (chunk.includes("Rate Limit Reached")) {
+                    setStatus(false);
+                }
+                
+                fullText += chunk;
                 aiBubble.innerHTML = marked.parse(fullText);
                 highlight(); 
                 chat.scrollTop = chat.scrollHeight;
             }
         } catch (e) {
-            aiBubble.innerHTML = e.name === 'AbortError' ? "<i>Stopped.</i>" : "Error: " + e.message;
+            if (e.name === 'AbortError') {
+                aiBubble.innerHTML = "<i>Stopped.</i>";
+            } else {
+                aiBubble.innerHTML = `<span style="color:#cf4242">Error: ${e.message}</span>`;
+                if (e.message.includes("Rate limit")) setStatus(false);
+            }
         }
     }
 
