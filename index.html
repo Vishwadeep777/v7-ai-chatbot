@@ -29,7 +29,7 @@
             overflow: hidden;
         }
 
-        /* --- Updated Header Styling --- */
+        /* --- Header & Persona Styling --- */
         .header {
             padding: 10px 25px;
             display: flex;
@@ -42,7 +42,12 @@
         .header-title {
             font-size: 1.2rem;
             font-weight: 700;
-            letter-spacing: 1px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
         }
 
         .header-dev {
@@ -56,10 +61,50 @@
             font-weight: 600;
         }
 
-        .header-dev a:hover {
-            text-decoration: underline;
+        #persona-select {
+            background: #40414f;
+            color: white;
+            border: 1px solid #565869;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            outline: none;
         }
 
+        /* --- Rate Limit Bar Styling --- */
+        .quota-container {
+            padding: 8px 25px;
+            background: #202123;
+            border-bottom: 1px solid #4d4d4f;
+        }
+
+        .quota-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #acacbe;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .quota-track {
+            width: 100%;
+            height: 4px;
+            background: #444654;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        #quota-bar {
+            width: 100%;
+            height: 100%;
+            background: #19c37d;
+            transition: width 0.4s ease, background 0.4s ease;
+        }
+
+        /* --- Chat UI --- */
         #chat-container {
             flex: 1;
             overflow-y: auto;
@@ -67,7 +112,6 @@
             scroll-behavior: smooth;
         }
 
-        /* --- Message Bubbles --- */
         .message {
             display: flex;
             gap: 20px;
@@ -103,7 +147,6 @@
             max-width: 85%;
             padding: 5px 10px;
             line-height: 1.6;
-            word-wrap: break-word;
         }
 
         .user .bubble { 
@@ -112,9 +155,7 @@
             padding: 10px 15px;
         }
 
-        .ai .bubble { background: transparent; }
-
-        /* --- Input Area --- */
+        /* --- Input --- */
         .input-area {
             padding: 20px;
             background: linear-gradient(transparent, #343541 30%);
@@ -131,7 +172,6 @@
             background: #40414f;
             border-radius: 12px;
             padding: 12px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.1);
         }
 
         textarea {
@@ -144,7 +184,6 @@
             outline: none;
             resize: none;
             max-height: 200px;
-            font-family: inherit;
         }
 
         .controls { display: flex; gap: 8px; margin-left: 10px; }
@@ -157,13 +196,9 @@
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
-            transition: background 0.2s;
         }
 
-        button.action-btn:hover { background: #1a8e5f; }
-        
-        button.stop-btn { background: #cf4242; }
-        button.stop-btn:hover { background: #a83232; }
+        .stop-btn { background: #cf4242 !important; }
 
         .footer {
             text-align: center;
@@ -174,7 +209,7 @@
             border-top: 1px solid #4d4d4f;
         }
 
-        /* --- Utilities --- */
+        /* --- Tools --- */
         .thinking { color: #acacbe; font-style: italic; }
         .dots::after { content: ""; animation: dots 1.5s infinite; }
         @keyframes dots { 0% {content: "";} 33% {content: ".";} 66% {content: "..";} 100% {content: "...";} }
@@ -190,15 +225,7 @@
             margin-bottom: 8px;
         }
 
-        pre { 
-            background: #0d1117; 
-            padding: 15px; 
-            border-radius: 8px; 
-            overflow-x: auto; 
-            border: 1px solid #30363d;
-        }
-        
-        code { font-family: 'Fira Code', monospace; }
+        pre { background: #0d1117; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid #30363d;}
     </style>
 </head>
 
@@ -207,8 +234,26 @@
     <div class="main">
         <div class="header">
             <div class="header-title">🤖 V-7 AI</div>
-            <div class="header-dev">
-                By <a href="https://github.com/Vishvdeep777" target="_blank">Vishvdeep Pundge</a>
+            <div class="header-right">
+                <select id="persona-select">
+                    <option value="general">🤖 General AI</option>
+                    <option value="java_expert">☕ Java Expert</option>
+                    <option value="resume_expert">📄 Resume Coach</option>
+                    <option value="creative">🎨 Creative Mode</option>
+                </select>
+                <div class="header-dev">
+                    By <a href="https://github.com/Vishvdeep777" target="_blank">Vishvdeep</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="quota-container">
+            <div class="quota-info">
+                <span>API Usage Limit</span>
+                <span id="quota-text">5 / 5 Requests Left</span>
+            </div>
+            <div class="quota-track">
+                <div id="quota-bar"></div>
             </div>
         </div>
         
@@ -218,26 +263,41 @@
             <div class="input-wrapper">
                 <textarea id="input" placeholder="Ask anything to V-7 AI..." rows="1"></textarea>
                 <div class="controls">
-                    <button class="action-btn" onclick="send()" title="Send Message">Send</button>
-                    <button class="action-btn stop-btn" onclick="stop()" title="Stop Generating">Stop</button>
-                    <button class="action-btn" style="background:#565869" onclick="clearChat()" title="Clear Conversation">Clear</button>
+                    <button class="action-btn" onclick="send()">Send</button>
+                    <button class="action-btn stop-btn" onclick="stop()">Stop</button>
+                    <button class="action-btn" style="background:#565869" onclick="clearChat()">Clear</button>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="footer">
-        V-7 AI is powered by Gemini 1.5 Flash. Verify important info. <br>
-        &copy; 2026 Vishvdeep.
+        V-7 AI is powered by Gemini 2.0 Flash. &copy; 2026 Vishvdeep Pundge.
     </div>
 
 <script>
     const chat = document.getElementById("chat-container");
     const input = document.getElementById("input");
+    const quotaBar = document.getElementById("quota-bar");
+    const quotaText = document.getElementById("quota-text");
+    
     let controller = null;
     let lastInput = "";
+    
+    // Rate Limit Logic
+    const MAX_REQUESTS = 5;
+    let requestsLeft = MAX_REQUESTS;
 
-    // Auto-resize textarea logic
+    function updateQuotaUI() {
+        const percentage = (requestsLeft / MAX_REQUESTS) * 100;
+        quotaBar.style.width = percentage + "%";
+        quotaText.innerText = `${requestsLeft} / ${MAX_REQUESTS} Requests Left`;
+        
+        if (requestsLeft <= 1) quotaBar.style.background = "#cf4242";
+        else if (requestsLeft <= 3) quotaBar.style.background = "#f1c40f";
+        else quotaBar.style.background = "#19c37d";
+    }
+
     input.addEventListener("input", () => {
         input.style.height = "auto";
         input.style.height = input.scrollHeight + "px";
@@ -246,15 +306,12 @@
     function msg(role, text) {
         const d = document.createElement("div");
         d.className = "message " + role;
-        
         const a = document.createElement("div");
         a.className = "avatar";
         a.innerText = role === "ai" ? "🤖" : "👤";
-        
         const b = document.createElement("div");
         b.className = "bubble";
         b.innerHTML = text;
-        
         d.append(a, b);
         chat.appendChild(d);
         chat.scrollTop = chat.scrollHeight;
@@ -262,64 +319,64 @@
     }
 
     async function send() {
+        if (requestsLeft <= 0) {
+            msg("ai", "⚠️ Rate limit reached. Please wait a minute for the quota to refill.");
+            return;
+        }
+
         const text = input.value.trim();
         if (!text) return;
         lastInput = text;
+
+        const persona = document.getElementById("persona-select").value;
 
         msg("user", text);
         input.value = "";
         input.style.height = "auto";
 
+        // Update Quota
+        requestsLeft--;
+        updateQuotaUI();
+        setTimeout(() => { 
+            if(requestsLeft < MAX_REQUESTS) {
+                requestsLeft++; 
+                updateQuotaUI();
+            }
+        }, 60000);
+
         const aiBubble = msg("ai", '<span class="thinking">V-7 AI is thinking<span class="dots"></span></span>');
-        
         controller = new AbortController();
 
         try {
             const response = await fetch("/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: text }),
+                body: JSON.stringify({ message: text, persona: persona }),
                 signal: controller.signal
             });
-
-            if (!response.ok) throw new Error(await response.text());
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let fullText = "";
-            
             aiBubble.innerHTML = ""; 
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-
-                const chunk = decoder.decode(value, { stream: true });
-                fullText += chunk;
-
-                // Update UI with parsed Markdown
+                fullText += decoder.decode(value, { stream: true });
                 aiBubble.innerHTML = marked.parse(fullText);
                 highlight(); 
                 chat.scrollTop = chat.scrollHeight;
             }
-            
         } catch (e) {
-            if (e.name === 'AbortError') {
-                aiBubble.innerHTML += " <i style='color:orange'>[Generation Stopped]</i>";
-            } else {
-                aiBubble.innerHTML = `<span style="color:#cf4242">Error: ${e.message}</span>`;
-            }
+            aiBubble.innerHTML = e.name === 'AbortError' ? "<i>Stopped.</i>" : "Error: " + e.message;
         }
     }
 
-    function stop() {
-        if (controller) controller.abort();
-    }
-
-    function clearChat() {
-        if (confirm("Clear all messages?")) {
-            chat.innerHTML = "";
-        }
+    function stop() { if (controller) controller.abort(); }
+    
+    function clearChat() { 
+        if (confirm("Clear chat?")) chat.innerHTML = ""; 
     }
 
     function highlight() {
@@ -327,19 +384,15 @@
             if (!block.dataset.highlighted) {
                 hljs.highlightElement(block);
                 block.dataset.highlighted = "true";
-                
-                // Add Copy Button to code blocks
-                if (!block.parentElement.querySelector(".copy-btn")) {
-                    const btn = document.createElement("div");
-                    btn.className = "copy-btn";
-                    btn.innerText = "Copy";
-                    btn.onclick = () => {
-                        navigator.clipboard.writeText(block.innerText);
-                        btn.innerText = "Copied!";
-                        setTimeout(() => btn.innerText = "Copy", 2000);
-                    };
-                    block.parentElement.prepend(btn);
-                }
+                const btn = document.createElement("div");
+                btn.className = "copy-btn";
+                btn.innerText = "Copy";
+                btn.onclick = () => {
+                    navigator.clipboard.writeText(block.innerText);
+                    btn.innerText = "Copied!";
+                    setTimeout(() => btn.innerText = "Copy", 2000);
+                };
+                block.parentElement.prepend(btn);
             }
         });
     }
@@ -351,6 +404,5 @@
         }
     });
 </script>
-
 </body>
 </html>
