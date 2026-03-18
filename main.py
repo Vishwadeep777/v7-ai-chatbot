@@ -59,12 +59,12 @@ async def chat(data: dict, request: Request):
 
     # ===== CASE 1: GOOGLE GEMINI STREAMING (ONLINE) =====
     if api_key:
-        # Initializing with the stable API version
+        # Initialize client
         client = genai.Client(api_key=api_key)
         
         async def stream_gemini():
             try:
-                # CHANGED MODEL: gemini-2.0-flash is the current stable standard
+                # Updated to the latest stable model to fix the 404 error
                 stream = client.models.generate_content_stream(
                     model="gemini-2.0-flash",
                     contents=user_message,
