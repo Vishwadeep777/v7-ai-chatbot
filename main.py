@@ -59,12 +59,10 @@ async def chat(data: dict, request: Request):
 
     # ===== CASE 1: GOOGLE GEMINI STREAMING (ONLINE) =====
     if api_key:
-        # Initialize client
         client = genai.Client(api_key=api_key)
         
         async def stream_gemini():
             try:
-                # Updated to the latest stable model to fix the 404 error
                 stream = client.models.generate_content_stream(
                     model="gemini-2.0-flash",
                     contents=user_message,
@@ -75,8 +73,13 @@ async def chat(data: dict, request: Request):
                 for chunk in stream:
                     if chunk.text:
                         yield chunk.text
+            
+            # This is the NEW part that catches the 429 error
             except Exception as e:
-                yield f"❌ Gemini Error: {str(e)}"
+                if "429" in str(e):
+                    yield "⚠️ V-7 AI is a bit busy right now (Rate Limit Reached). Please wait 30 seconds and try again!"
+                else:
+                    yield f"❌ Gemini Error: {str(e)}"
 
         return StreamingResponse(stream_gemini(), media_type="text/plain")
 
