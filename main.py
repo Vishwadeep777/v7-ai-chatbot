@@ -65,7 +65,7 @@ async def chat(data: dict, request: Request):
         async def stream_gemini():
             try:
                 stream = client.models.generate_content_stream(
-                    model="gemini-2.0-flash",
+                    model="gemini-1.5-flash",
                     contents=user_message,
                     config=types.GenerateContentConfig(
                         system_instruction=selected_instruction
