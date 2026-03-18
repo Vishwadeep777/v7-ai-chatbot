@@ -1,10 +1,9 @@
 import os
 import time
 import requests
+import json
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
-from google import genai
-from google.genai import types
 
 app = FastAPI()
 
@@ -55,42 +54,62 @@ async def chat(data: dict, request: Request):
     }
     
     selected_instruction = instructions.get(persona, instructions["general"])
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    
+    # Notice we are now pulling the GROQ_API_KEY from Render!
+    api_key = os.environ.get("GROQ_API_KEY")
 
-    # ===== CASE 1: GOOGLE GEMINI STREAMING (ONLINE) =====
+    # ===== CASE 1: GROQ API STREAMING (ONLINE) =====
     if api_key:
-        client = genai.Client(api_key=api_key)
-        
-        async def stream_gemini():
+        async def stream_groq():
             try:
-                # Switched to 1.5-flash as it has more stable free-tier quotas
-                stream = client.models.generate_content_stream(
-                    model="gemini-2.0-flash",
-                    contents=user_message,
-                    config=types.GenerateContentConfig(
-                        system_instruction=selected_instruction
-                    )
+                # We are using Meta's flagship Llama 3.3 70B model via Groq!
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": selected_instruction},
+                            {"role": "user", "content": user_message}
+                        ],
+                        "stream": True
+                    },
+                    stream=True,
+                    timeout=30
                 )
-                for chunk in stream:
-                    if chunk.text:
-                        yield chunk.text
-            
-            except Exception as e:
-                raw_error = str(e)
-                # Logging the error for you to see in the chat bubble
-                yield f"DEBUG: {raw_error} | "
                 
-                if "429" in raw_error:
-                    if "quota" in raw_error.lower():
-                        yield "⚠️ Google Daily Quota Reached. Please use a key from a NEW project."
-                    else:
-                        yield "⚠️ V-7 AI is a bit busy right now (Rate Limit Reached). Please wait 30 seconds."
-                elif "404" in raw_error:
-                    yield "❌ Model Error: The AI model name was not recognized. Please check the SDK version."
-                else:
-                    yield f"❌ Gemini Error: {raw_error}"
+                if response.status_code == 429:
+                    yield "⚠️ V-7 AI is cooling down (Groq Rate Limit). Please wait a moment."
+                    return
+                elif response.status_code == 401:
+                    yield "❌ Groq API Error: Invalid API Key. Please check your Render Environment Variables."
+                    return
+                elif response.status_code != 200:
+                    yield f"❌ Groq API Error: {response.text}"
+                    return
+                    
+                # Parse the Server-Sent Events (SSE) stream from Groq
+                for line in response.iter_lines():
+                    if line:
+                        decoded_line = line.decode('utf-8')
+                        if decoded_line.startswith("data: "):
+                            data_str = decoded_line[6:]
+                            if data_str.strip() == "[DONE]":
+                                break
+                            try:
+                                data_json = json.loads(data_str)
+                                chunk = data_json["choices"][0]["delta"].get("content", "")
+                                if chunk:
+                                    yield chunk
+                            except Exception:
+                                pass
+            except Exception as e:
+                yield f"❌ Connection Error: {str(e)}"
 
-        return StreamingResponse(stream_gemini(), media_type="text/plain")
+        return StreamingResponse(stream_groq(), media_type="text/plain")
 
     # ===== CASE 2: LOCAL OLLAMA (OFFLINE FALLBACK) =====
     else:
@@ -115,5 +134,5 @@ async def chat(data: dict, request: Request):
 
         except Exception as e:
             def stream_error():
-                yield "❌ Error: GOOGLE_API_KEY not found and Ollama is not running."
+                yield "❌ Error: GROQ_API_KEY not found in Render Environment Variables."
             return StreamingResponse(stream_error(), media_type="text/plain")
