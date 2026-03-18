@@ -41,30 +41,42 @@ def read_root():
 @app.post("/chat", dependencies=[Depends(check_rate_limit)])
 async def chat(data: dict, request: Request):
     user_message = data.get("message", "").strip()
+    persona = data.get("persona", "general") # Capture the persona from frontend
 
     if not user_message:
         raise HTTPException(status_code=400, detail="Empty message")
 
+    # Define Persona Instructions
+    instructions = {
+        "general": "You are V-7 AI, a helpful assistant created by Vishvdeep Pundge.",
+        "java_expert": "You are V-7 AI, a Senior Java Developer. Provide clean, efficient code using Java 21+ features and best practices.",
+        "resume_expert": "You are V-7 AI, an IT Career Coach. Help the user optimize their resume for ATS and highlight technical engineering skills.",
+        "creative": "You are V-7 AI, a creative storyteller. Provide imaginative and expressive responses."
+    }
+    
+    selected_instruction = instructions.get(persona, instructions["general"])
     api_key = os.environ.get("GOOGLE_API_KEY")
 
     # ===== CASE 1: GOOGLE GEMINI STREAMING (ONLINE) =====
     if api_key:
+        # Use the latest GenAI client
         client = genai.Client(api_key=api_key)
         
         async def stream_gemini():
             try:
-                # Using Gemini 1.5 Flash for high-speed streaming
+                # UPDATED MODEL: Using gemini-2.0-flash to fix the 404 Error
                 stream = client.models.generate_content_stream(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.0-flash",
                     contents=user_message,
                     config=types.GenerateContentConfig(
-                        system_instruction="You are V-7 AI, a helpful assistant created by Vishvdeep Pundge."
+                        system_instruction=selected_instruction
                     )
                 )
                 for chunk in stream:
                     if chunk.text:
                         yield chunk.text
             except Exception as e:
+                # Clearer error reporting for debugging
                 yield f"❌ Gemini Error: {str(e)}"
 
         return StreamingResponse(stream_gemini(), media_type="text/plain")
