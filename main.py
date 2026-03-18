@@ -11,7 +11,7 @@ app = FastAPI()
 # ================= RATE LIMITER =================
 # We store request times in memory. Restarting the Render service clears this.
 RATE_LIMIT_STORE = {}
-MAX_REQUESTS_PER_MINUTE = 10  # Increased slightly to be more generous for testing
+MAX_REQUESTS_PER_MINUTE = 10 
 
 def check_rate_limit(request: Request):
     client_ip = request.client.host
@@ -76,15 +76,18 @@ async def chat(data: dict, request: Request):
                         yield chunk.text
             
             except Exception as e:
-                error_msg = str(e)
-                # Differentiate between hitting the 1-minute limit and the Daily Limit
-                if "429" in error_msg:
-                    if "Quota exceeded" in error_msg.lower():
-                        yield "⚠️ Google Daily Quota Reached. The free limit resets every 24 hours. Please try again later or use a different API key."
+                raw_error = str(e)
+                # First, yield the debug info so we can see it in the chat bubble
+                yield f"DEBUG: {raw_error} | "
+                
+                # Then handle specific cases
+                if "429" in raw_error:
+                    if "quota" in raw_error.lower():
+                        yield "⚠️ Google Daily Quota Reached. Please use a key from a NEW project."
                     else:
-                        yield "⚠️ V-7 AI is a bit busy right now (Rate Limit Reached). Please wait 30 seconds and try again!"
+                        yield "⚠️ V-7 AI is a bit busy right now (Rate Limit Reached). Please wait 30 seconds."
                 else:
-                    yield f"❌ Gemini Error: {error_msg}"
+                    yield f"❌ Gemini Error: {raw_error}"
 
         return StreamingResponse(stream_gemini(), media_type="text/plain")
 
