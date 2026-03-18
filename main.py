@@ -9,7 +9,6 @@ from google.genai import types
 app = FastAPI()
 
 # ================= RATE LIMITER =================
-# We store request times in memory. Restarting the Render service clears this.
 RATE_LIMIT_STORE = {}
 MAX_REQUESTS_PER_MINUTE = 10 
 
@@ -64,6 +63,7 @@ async def chat(data: dict, request: Request):
         
         async def stream_gemini():
             try:
+                # Switched to 1.5-flash as it has more stable free-tier quotas
                 stream = client.models.generate_content_stream(
                     model="gemini-1.5-flash",
                     contents=user_message,
@@ -77,15 +77,16 @@ async def chat(data: dict, request: Request):
             
             except Exception as e:
                 raw_error = str(e)
-                # First, yield the debug info so we can see it in the chat bubble
+                # Logging the error for you to see in the chat bubble
                 yield f"DEBUG: {raw_error} | "
                 
-                # Then handle specific cases
                 if "429" in raw_error:
                     if "quota" in raw_error.lower():
                         yield "⚠️ Google Daily Quota Reached. Please use a key from a NEW project."
                     else:
                         yield "⚠️ V-7 AI is a bit busy right now (Rate Limit Reached). Please wait 30 seconds."
+                elif "404" in raw_error:
+                    yield "❌ Model Error: The AI model name was not recognized. Please check the SDK version."
                 else:
                     yield f"❌ Gemini Error: {raw_error}"
 
