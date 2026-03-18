@@ -41,7 +41,7 @@ def read_root():
 @app.post("/chat", dependencies=[Depends(check_rate_limit)])
 async def chat(data: dict, request: Request):
     user_message = data.get("message", "").strip()
-    persona = data.get("persona", "general") # Capture the persona from frontend
+    persona = data.get("persona", "general") 
 
     if not user_message:
         raise HTTPException(status_code=400, detail="Empty message")
@@ -49,8 +49,8 @@ async def chat(data: dict, request: Request):
     # Define Persona Instructions
     instructions = {
         "general": "You are V-7 AI, a helpful assistant created by Vishvdeep Pundge.",
-        "java_expert": "You are V-7 AI, a Senior Java Developer. Provide clean, efficient code using Java 21+ features and best practices.",
-        "resume_expert": "You are V-7 AI, an IT Career Coach. Help the user optimize their resume for ATS and highlight technical engineering skills.",
+        "java_expert": "You are V-7 AI, a Senior Java Developer. Provide clean, efficient code using Java 21+ features.",
+        "resume_expert": "You are V-7 AI, an IT Career Coach. Help the user optimize their resume for ATS.",
         "creative": "You are V-7 AI, a creative storyteller. Provide imaginative and expressive responses."
     }
     
@@ -59,12 +59,12 @@ async def chat(data: dict, request: Request):
 
     # ===== CASE 1: GOOGLE GEMINI STREAMING (ONLINE) =====
     if api_key:
-        # Use the latest GenAI client
+        # Initializing with the stable API version
         client = genai.Client(api_key=api_key)
         
         async def stream_gemini():
             try:
-                # UPDATED MODEL: Using gemini-2.0-flash to fix the 404 Error
+                # CHANGED MODEL: gemini-2.0-flash is the current stable standard
                 stream = client.models.generate_content_stream(
                     model="gemini-2.0-flash",
                     contents=user_message,
@@ -76,7 +76,6 @@ async def chat(data: dict, request: Request):
                     if chunk.text:
                         yield chunk.text
             except Exception as e:
-                # Clearer error reporting for debugging
                 yield f"❌ Gemini Error: {str(e)}"
 
         return StreamingResponse(stream_gemini(), media_type="text/plain")
@@ -104,5 +103,5 @@ async def chat(data: dict, request: Request):
 
         except Exception as e:
             def stream_error():
-                yield "❌ Error: GOOGLE_API_KEY not found in Render settings and Ollama is not running locally."
+                yield "❌ Error: GOOGLE_API_KEY not found and Ollama is not running."
             return StreamingResponse(stream_error(), media_type="text/plain")
