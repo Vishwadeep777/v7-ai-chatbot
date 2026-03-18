@@ -1,15 +1,14 @@
-from fastapi import FastAPI, HTTPException, Request, Depends
-from fastapi.responses import FileResponse, StreamingResponse
 import os
-import requests
-import json
 import time
-import replicate
+import requests
+from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
+from google import genai
+from google.genai import types
 
 app = FastAPI()
 
 # ================= RATE LIMITER =================
-# remembers IP addresses and the times they sent messages
 RATE_LIMIT_STORE = {}
 MAX_REQUESTS_PER_MINUTE = 5
 
@@ -26,7 +25,7 @@ def check_rate_limit(request: Request):
     if len(RATE_LIMIT_STORE[client_ip]) >= MAX_REQUESTS_PER_MINUTE:
         raise HTTPException(
             status_code=429, 
-            detail="Too many requests. Please wait a minute before sending another message."
+            detail="Too many requests. Please wait a minute."
         )
 
     RATE_LIMIT_STORE[client_ip].append(current_time)
@@ -46,31 +45,33 @@ async def chat(data: dict, request: Request):
     if not user_message:
         raise HTTPException(status_code=400, detail="Empty message")
 
-    api_token = os.environ.get("REPLICATE_API_TOKEN")
+    api_key = os.environ.get("GOOGLE_API_KEY")
 
-    # ===== CASE 1: REPLICATE STREAMING (ONLINE) =====
-    if api_token:
-        def stream_replicate():
+    # ===== CASE 1: GOOGLE GEMINI STREAMING (ONLINE) =====
+    if api_key:
+        client = genai.Client(api_key=api_key)
+        
+        async def stream_gemini():
             try:
-                # Using the official SDK for real-time word-by-word delivery
-                for event in replicate.stream(
-                    "meta/meta-llama-3-8b-instruct",
-                    input={
-                        "prompt": user_message,
-                        "prompt_template": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are V-7 AI, a helpful assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-                    }
-                ):
-                    yield str(event)
+                # Using Gemini 1.5 Flash for high-speed streaming
+                stream = client.models.generate_content_stream(
+                    model="gemini-1.5-flash",
+                    contents=user_message,
+                    config=types.GenerateContentConfig(
+                        system_instruction="You are V-7 AI, a helpful assistant created by Vishvdeep Pundge."
+                    )
+                )
+                for chunk in stream:
+                    if chunk.text:
+                        yield chunk.text
             except Exception as e:
-                yield f"Error connecting to Replicate: {str(e)}"
+                yield f"❌ Gemini Error: {str(e)}"
 
-        return StreamingResponse(stream_replicate(), media_type="text/plain")
+        return StreamingResponse(stream_gemini(), media_type="text/plain")
 
     # ===== CASE 2: LOCAL OLLAMA (OFFLINE FALLBACK) =====
     else:
         try:
-            # Note: Streaming with requests/ollama locally is done differently, 
-            # so for this fallback we return the full string at once.
             response = requests.post(
                 "http://localhost:11434/api/generate",
                 json={
@@ -78,13 +79,12 @@ async def chat(data: dict, request: Request):
                     "prompt": user_message,
                     "stream": False
                 },
-                timeout=60
+                timeout=30
             )
             
             data_obj = response.json()
             full_text = data_obj.get("response", "No response from local AI.")
             
-            # We wrap this in a generator so the frontend can still use its "while" loop
             def stream_local():
                 yield full_text
                 
@@ -92,5 +92,5 @@ async def chat(data: dict, request: Request):
 
         except Exception as e:
             def stream_error():
-                yield "❌ Ollama not running and no API Token found. Run: `ollama serve`"
+                yield "❌ Error: GOOGLE_API_KEY not found in Render settings and Ollama is not running locally."
             return StreamingResponse(stream_error(), media_type="text/plain")
