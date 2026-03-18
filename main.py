@@ -65,7 +65,7 @@ async def chat(data: dict, request: Request):
             try:
                 # Switched to 1.5-flash as it has more stable free-tier quotas
                 stream = client.models.generate_content_stream(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.0-flash",
                     contents=user_message,
                     config=types.GenerateContentConfig(
                         system_instruction=selected_instruction
