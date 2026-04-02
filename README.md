@@ -1,6 +1,6 @@
 # 🤖 V-7 AI Chatbot
 
-A high-performance, full-stack AI chatbot built with **FastAPI** and **Google Gemini 2.0**. This project demonstrates real-time asynchronous streaming, secure API integration, and custom persona-based prompting.
+A high-performance, full-stack AI chatbot built with **FastAPI** and ****. This project demonstrates real-time asynchronous streaming, secure API integration, and custom persona-based prompting.
 
 ## 🚀 Live Demo
 Check out the live application: [v7-ai-chatbot.onrender.com](https://v7-ai-chatbot.onrender.com)
@@ -10,10 +10,10 @@ Check out the live application: [v7-ai-chatbot.onrender.com](https://v7-ai-chatb
 ## 🛠️ Tech Stack
 
 * **Backend:** FastAPI (Python 3.11)
-* **AI Engine:** Google Gemini 2.0 Flash API
+* **AI Engine:**  Llama 3.3 via Groq Flash API
 * **Frontend:** HTML5, CSS3 (Modern UI), JavaScript (ES6+)
 * **Deployment:** Render
-* **Key Libraries:** `google-genai`, `uvicorn`, `marked.js` (Markdown), `highlight.js` (Code Highlighting)
+* **Key Libraries:** ` Llama 3.3 via Groq`, `uvicorn`, `marked.js` (Markdown), `highlight.js` (Code Highlighting)
 
 ---
 
@@ -30,7 +30,7 @@ Check out the live application: [v7-ai-chatbot.onrender.com](https://v7-ai-chatb
 ## 🏗️ Engineering Challenges Solved
 
 ### 1. Versioning & Compatibility
-Resolved `404 NOT_FOUND` errors by migrating from legacy `v1beta` endpoints to the stable **Gemini 2.0 Flash** model using the `google-genai` SDK.
+Resolved `404 NOT_FOUND` errors by migrating from legacy `v1beta` endpoints to the stable **Gemini 2.0 Flash** model using the ` Llama 3.3 via Groq` SDK.
 
 ### 2. Cloud Deployment & Port Binding
 Optimized deployment on **Render** by resolving "Port Scan Timeout" issues. Implemented explicit port binding to `10000` to ensure 100% uptime on cloud instances.
@@ -64,7 +64,7 @@ Utilized Python's `asyncio` and FastAPI's `StreamingResponse` to handle non-bloc
 3.  **Set Environment Variables:**
     Create a `.env` file or export your key:
     ```bash
-    export GOOGLE_API_KEY='your_api_key_here'
+    export GROQ_API_KEY='your_api_key_here'
     ```
 
 4.  **Run the Server:**
@@ -76,7 +76,7 @@ Utilized Python's `asyncio` and FastAPI's `StreamingResponse` to handle non-bloc
 
 ## 👤 Author
 
-**Vishvdeep Pundge** * GitHub: [@Vishvdeep777](https://github.com/Vishvdeep777)  
+**Vishvdeep ** * GitHub: [@Vishvdeep777](https://github.com/Vishvdeep777)  
 * Education: B.E. in Information Technology, SGBAU (2025)
 
 ---
